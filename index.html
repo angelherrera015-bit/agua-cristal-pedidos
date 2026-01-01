@@ -7,51 +7,28 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root {
-            --color-primary: #06b6d4;
-            --color-secondary: #0891b2;
-            --color-light: #f0fdfa;
-            --color-dark: #0e7490;
-        }
+        :root { --color-primary: #06b6d4; --color-secondary: #0891b2; --color-light: #f0fdfa; --color-dark: #0e7490; }
         .bg-water-primary { background-color: var(--color-primary); }
-        .hover\:bg-water-secondary:hover { background-color: var(--color-secondary); }
         .text-water-primary { color: var(--color-primary); }
         .border-water-primary { border-color: var(--color-primary); }
-        .shadow-water { box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.5), 0 4px 6px -2px rgba(6, 182, 212, 0.05); }
         body { font-family: 'Inter', sans-serif; background-color: var(--color-light); }
-        .main-button { transition: all 0.3s ease; transform: scale(1); }
+        .main-button { transition: all 0.3s ease; }
         .main-button:hover { transform: scale(1.03); box-shadow: 0 20px 25px -5px rgba(6, 182, 212, 0.4); }
     </style>
 </head>
 <body class="min-h-screen flex flex-col antialiased">
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, addDoc, onSnapshot, collection, query, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        let app, db, auth;
-        let userId = 'anon';
-        let userRole = null;
-        let currentView = 'login';
-        let dailySales = 0;
-        let todayOrders = [];
-        let isFirestoreAvailable = true; 
-
-        // CONFIGURACIÓN DE PRECIOS
-        const PRECIOS = {
-            'NORMAL_DOMICILIO': 11.00,
-            'NORMAL_TIENDA': 9.00,
-            'PEQUENA': 1.00,
-            'MEDIA': 3.00
-        };
-
+        let app, db, auth, userRole = null, currentView = 'login', todayOrders = [], dailySales = 0;
         const LOGO_URL = "https://r.jina.ai/i/69599a09325941c9bc88c7f39589d71c";
-
-        const CREDENTIALS = {
-            'ADMINISTRADOR': 'Angel2006$',
-            'USUARIO 1': 'Aguacristal06'
-        };
-
+        
+        // PRECIOS ACTUALIZADOS
+        const PRECIOS = { 'NORMAL_DOM': 11, 'NORMAL_TIE': 9, 'PEQ': 1, 'MED': 3 };
+        const CREDENTIALS = { 'ADMINISTRADOR': 'Angel2006$', 'USUARIO 1': 'Aguacristal06' };
+        
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyAlrX-AEX7P-Ntpg30_62YHbL6Z3zxykDQ",
             authDomain: "aguacristal-3668c.firebaseapp.com",
@@ -60,113 +37,176 @@
             messagingSenderId: "777148704166",
             appId: "1:777148704166:web:c522eaac1d469ac0829b67"
         };
-        
-        const COLLECTION_PATH = `orders_ACZ6`;
-        const getTodayDate = () => new Date().toISOString().slice(0, 10);
 
         window.initFirebase = async () => {
             try {
                 app = initializeApp(FIREBASE_CONFIG);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                onAuthStateChanged(auth, async (user) => {
-                    if (!user) await signInAnonymously(auth);
-                });
+                onAuthStateChanged(auth, async (u) => { if (!u) await signInAnonymously(auth); });
                 window.setupRealtimeListener();
                 window.renderApp();
-            } catch (error) {
-                console.error("Firebase Error:", error);
-                isFirestoreAvailable = false; 
-                window.renderApp('login'); 
-            }
+            } catch (e) { console.error("Error Firebase:", e); }
         };
 
-        window.renderApp = (newView = currentView) => {
-            currentView = newView;
-            const appContainer = document.getElementById('app-container');
-            const isAdmin = userRole === 'ADMINISTRADOR';
-            appContainer.innerHTML = '';
-
-            if (!userRole) appContainer.innerHTML = window.renderLogin();
-            else if (currentView === 'home') appContainer.innerHTML = window.renderHome();
-            else if (currentView === 'form') appContainer.innerHTML = window.renderOrderForm();
-            else if (currentView === 'orders') appContainer.innerHTML = window.renderOrdersList(isAdmin);
-
+        window.renderApp = (view = currentView) => {
+            currentView = view;
+            const container = document.getElementById('app-container');
+            if (!userRole) container.innerHTML = window.renderLogin();
+            else if (currentView === 'home') container.innerHTML = window.renderHome();
+            else if (currentView === 'form') container.innerHTML = window.renderOrderForm();
+            else if (currentView === 'orders') container.innerHTML = window.renderOrdersList();
             lucide.createIcons();
-            window.attachEventListeners();
         };
 
         window.renderLogin = () => `
-            <div class="p-8 max-w-sm mx-auto my-16 bg-white rounded-xl shadow-water border-4 border-water-primary text-center">
-                <img src="${LOGO_URL}" alt="Logo" class="w-32 mx-auto mb-4">
-                <h1 class="text-2xl font-extrabold mb-4 text-water-primary">AGUA CRISTAL ZONA 6</h1>
-                <div id="login-error" class="text-red-600 text-sm mb-4 hidden"></div>
-                <input type="text" id="username" class="w-full px-3 py-2 border rounded-md mb-3" placeholder="Usuario">
-                <input type="password" id="password" class="w-full px-3 py-2 border rounded-md mb-4" placeholder="Contraseña">
-                <button id="login-button" class="w-full py-2 rounded-md text-white bg-water-primary font-bold">Ingresar</button>
+            <div class="p-8 max-w-sm mx-auto my-16 bg-white rounded-xl shadow-lg border-4 border-water-primary text-center">
+                <img src="${LOGO_URL}" class="w-32 mx-auto mb-4">
+                <h1 class="text-2xl font-bold text-water-primary">AGUA CRISTAL ZONA 6</h1>
+                <input type="text" id="username" placeholder="Usuario" class="w-full mt-4 p-2 border rounded">
+                <input type="password" id="password" placeholder="Contraseña" class="w-full mt-2 p-2 border rounded">
+                <button onclick="window.handleLogin()" class="w-full mt-4 bg-water-primary text-white p-2 rounded font-bold">INGRESAR</button>
             </div>`;
 
         window.renderHome = () => `
-            <header class="w-full bg-white shadow p-4 flex justify-between items-center sticky top-0 z-10">
-                <div class="flex items-center"><img src="${LOGO_URL}" class="w-10 mr-2"><h1 class="font-bold text-water-dark">Hola, ${userRole}</h1></div>
-                <div class="flex space-x-2">
-                    <button id="view-orders-button" class="px-3 py-2 text-xs font-medium rounded-full bg-cyan-100 text-water-dark">Pedidos</button>
-                    <button id="logout-button" class="px-3 py-2 text-xs font-medium rounded-full bg-red-100 text-red-700">Salir</button>
-                </div>
+            <header class="bg-white p-4 shadow flex justify-between items-center">
+                <span class="font-bold text-water-dark">Hola, ${userRole}</span>
+                <button onclick="window.renderApp('orders')" class="bg-cyan-100 p-2 rounded text-xs font-bold">VER PEDIDOS</button>
             </header>
-            <div class="flex-grow flex flex-col justify-center items-center p-6 space-y-8 max-w-4xl mx-auto">
-                <h2 class="text-3xl font-extrabold text-gray-800 text-center">Nuevo Pedido</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                    <button id="order-domicilio" class="main-button p-8 bg-white rounded-2xl shadow-water border-2 border-water-primary flex flex-col items-center">
-                        <i data-lucide="truck" class="w-12 h-12 mb-2 text-water-primary"></i>
-                        <span class="text-xl font-bold uppercase">A Domicilio</span>
-                        <span class="text-xs text-gray-500 text-center">Normal Q.${PRECIOS.NORMAL_DOMICILIO.toFixed(2)}</span>
-                    </button>
-                    <button id="order-fisica" class="main-button p-8 bg-white rounded-2xl shadow-water border-2 border-water-primary flex flex-col items-center">
-                        <i data-lucide="store" class="w-12 h-12 mb-2 text-water-primary"></i>
-                        <span class="text-xl font-bold uppercase">En Tienda</span>
-                        <span class="text-xs text-gray-500 text-center">Normal Q.${PRECIOS.NORMAL_TIENDA.toFixed(2)}</span>
-                    </button>
-                </div>
+            <div class="p-6 grid gap-6 max-w-md mx-auto">
+                <button onclick="window.handleOrderType('A DOMICILIO')" class="main-button p-10 bg-white border-4 border-water-primary rounded-2xl flex flex-col items-center">
+                    <i data-lucide="truck" class="w-12 h-12 text-water-primary"></i><span class="font-bold">A DOMICILIO (Q11)</span>
+                </button>
+                <button onclick="window.handleOrderType('TIENDA')" class="main-button p-10 bg-white border-4 border-water-primary rounded-2xl flex flex-col items-center">
+                    <i data-lucide="store" class="w-12 h-12 text-water-primary"></i><span class="font-bold">EN TIENDA (Q9)</span>
+                </button>
             </div>`;
 
         window.renderOrderForm = () => {
-            const type = localStorage.getItem('currentOrderType');
-            const isDomicilio = type === 'A DOMICILIO';
+            const type = localStorage.getItem('currentType');
             return `
-                <div class="p-6 max-w-2xl mx-auto my-8 bg-white rounded-xl shadow-lg border-t-8 border-water-primary">
-                    <button id="back-home-button" class="mb-4 text-gray-500 flex items-center"><i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i> Volver</button>
-                    <h3 class="text-2xl font-extrabold text-water-dark mb-6">PEDIDO: ${type}</h3>
-                    <form id="order-form" class="space-y-4">
-                        <input type="text" id="customerName" required placeholder="Nombre del Cliente" class="w-full px-4 py-2 border rounded-lg">
-                        <input type="tel" id="phone" required placeholder="Teléfono" class="w-full px-4 py-2 border rounded-lg">
-                        
-                        <div class="p-4 bg-gray-50 rounded-lg space-y-3">
-                            <p class="font-bold text-sm text-gray-600 uppercase">Productos:</p>
-                            
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm">Garrafón Normal</label>
-                                <input type="number" id="qty_normal" min="0" value="0" class="product-qty w-20 px-2 py-1 border rounded text-center">
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm">Garrafón Pequeño (Q.1)</label>
-                                <input type="number" id="qty_pequena" min="0" value="0" class="product-qty w-20 px-2 py-1 border rounded text-center">
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm">1/2 Garrafón (Q.3)</label>
-                                <input type="number" id="qty_media" min="0" value="0" class="product-qty w-20 px-2 py-1 border rounded text-center">
-                            </div>
-                        </div>
-
-                        <div class="flex-1 p-3 bg-cyan-100 rounded-lg text-center font-bold text-xl text-water-dark" id="total-display">TOTAL: Q.0.00</div>
-                        
-                        <input type="text" id="nit" placeholder="NIT (C/F)" class="w-full px-4 py-2 border rounded-lg">
-                        <textarea id="address" rows="3" placeholder="Dirección de Entrega" class="${isDomicilio ? '' : 'hidden'} w-full px-4 py-2 border rounded-lg"></textarea>
-                        
-                        <button type="submit" class="w-full py-3 rounded-lg text-white bg-water-primary font-bold shadow-lg">REGISTRAR PEDIDO</button>
-                    </form>
-                    <div id="form-message" class="mt-4 p-3 rounded-lg text-center hidden font-bold"></div>
-                </div>`;
+            <div class="p-6 max-w-md mx-auto bg-white rounded-xl shadow-lg">
+                <button onclick="window.renderApp('home')" class="text-gray-400 mb-4 flex items-center"><i data-lucide="chevron-left"></i> Volver</button>
+                <h2 class="font-bold text-xl mb-4">NUEVO PEDIDO: ${type}</h2>
+                <form onsubmit="window.handleFormSubmit(event)" class="space-y-3">
+                    <input type="text" id="custName" placeholder="Nombre Cliente" required class="w-full p-2 border rounded">
+                    <input type="tel" id="custPhone" placeholder="Teléfono" required class="w-full p-2 border rounded">
+                    <div class="bg-gray-50 p-3 rounded space-y-2">
+                        <div class="flex justify-between items-center"><span>Normal:</span><input type="number" id="qN" value="0" min="0" oninput="window.calcTotal()" class="w-16 border rounded text-center"></div>
+                        <div class="flex justify-between items-center"><span>Pequeña (Q1):</span><input type="number" id="qP" value="0" min="0" oninput="window.calcTotal()" class="w-16 border rounded text-center"></div>
+                        <div class="flex justify-between items-center"><span>1/2 Garrafa (Q3):</span><input type="number" id="qM" value="0" min="0" oninput="window.calcTotal()" class="w-16 border rounded text-center"></div>
+                    </div>
+                    <div id="total-val" class="text-center font-bold text-2xl p-2 bg-cyan-100 rounded text-water-dark">TOTAL: Q.0.00</div>
+                    <textarea id="addr" placeholder="Dirección" class="w-full p-2 border rounded ${type === 'TIENDA' ? 'hidden' : ''}"></textarea>
+                    <button type="submit" class="w-full bg-water-primary text-white p-3 rounded font-bold shadow-lg">GUARDAR PEDIDO</button>
+                </form>
+            </div>`;
         };
 
-        window.renderOrdersList
+        window.renderOrdersList = () => `
+            <header class="bg-white p-4 shadow flex justify-between items-center sticky top-0">
+                <button onclick="window.renderApp('home')" class="bg-cyan-100 p-2 rounded text-xs font-bold">INICIO</button>
+                <span class="font-bold">Ventas Hoy: Q.${dailySales.toFixed(2)}</span>
+            </header>
+            <div class="p-2 overflow-x-auto">
+                <table class="w-full text-xs bg-white rounded shadow">
+                    <thead class="bg-gray-100"><tr><th class="p-2">Hora</th><th class="p-2">Cliente</th><th class="p-2">Detalle</th><th class="p-2">Total</th><th class="p-2">Acciones</th></tr></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>`;
+
+        window.handleLogin = () => {
+            const u = document.getElementById('username').value.toUpperCase();
+            const p = document.getElementById('password').value;
+            if (CREDENTIALS[u] === p) { userRole = u; window.renderApp('home'); }
+            else alert("Usuario o contraseña incorrectos");
+        };
+
+        window.handleOrderType = (t) => { localStorage.setItem('currentType', t); window.renderApp('form'); };
+
+        window.calcTotal = () => {
+            const type = localStorage.getItem('currentType');
+            const pN = type === 'A DOMICILIO' ? PRECIOS.NORMAL_DOM : PRECIOS.NORMAL_TIE;
+            const qN = parseInt(document.getElementById('qN').value) || 0;
+            const qP = parseInt(document.getElementById('qP').value) || 0;
+            const qM = parseInt(document.getElementById('qM').value) || 0;
+            const total = (qN * pN) + (qP * PRECIOS.PEQ) + (qM * PRECIOS.MED);
+            document.getElementById('total-val').innerText = `TOTAL: Q.${total.toFixed(2)}`;
+            return total;
+        };
+
+        window.handleFormSubmit = async (e) => {
+            e.preventDefault();
+            const total = window.calcTotal();
+            if (total === 0) return alert("Ingrese al menos un producto");
+            const data = {
+                name: document.getElementById('custName').value,
+                phone: document.getElementById('custPhone').value,
+                qN: parseInt(document.getElementById('qN').value) || 0,
+                qP: parseInt(document.getElementById('qP').value) || 0,
+                qM: parseInt(document.getElementById('qM').value) || 0,
+                addr: document.getElementById('addr').value || 'N/A',
+                type: localStorage.getItem('currentType'),
+                total: total,
+                date: new Date().toISOString().slice(0, 10),
+                time: new Date().toLocaleTimeString('es-GT'),
+                ts: Date.now()
+            };
+            await addDoc(collection(db, "orders_ACZ6"), data);
+            alert("✅ Pedido guardado exitosamente");
+            window.renderApp('home');
+        };
+
+        window.setupRealtimeListener = () => {
+            onSnapshot(query(collection(db, "orders_ACZ6")), (snap) => {
+                const list = []; snap.forEach(d => list.push({id: d.id, ...d.data()}));
+                list.sort((a,b) => b.ts - a.ts);
+                const today = new Date().toISOString().slice(0,10);
+                todayOrders = list.filter(o => o.date === today);
+                dailySales = todayOrders.reduce((s, o) => s + o.total, 0);
+                if (currentView === 'orders') window.updateTable();
+            });
+        };
+
+        window.updateTable = () => {
+            const body = document.getElementById('table-body');
+            if (!body) return;
+            body.innerHTML = todayOrders.map(o => `
+                <tr class="border-b text-center hover:bg-gray-50">
+                    <td class="p-2 text-gray-500">${o.time}</td>
+                    <td class="p-2"><b>${o.name}</b></td>
+                    <td class="p-2">${o.qN}N, ${o.qP}P, ${o.qM}M</td>
+                    <td class="p-2 font-bold text-water-dark">Q.${o.total.toFixed(2)}</td>
+                    <td class="p-2 flex justify-center space-x-2">
+                        <button onclick="window.printT('${o.id}')" class="text-gray-500"><i data-lucide="printer" class="w-4 h-4"></i></button>
+                        ${userRole==='ADMINISTRADOR' ? `<button onclick="window.delOrder('${o.id}')" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                    </td>
+                </tr>`).join('');
+            lucide.createIcons();
+        };
+
+        window.printT = (id) => {
+            const o = todayOrders.find(x => x.id === id);
+            const w = window.open('', '_blank', 'width=300,height=600');
+            w.document.write(`<html><body style="font-family:'Courier New';width:70mm;padding:5mm;text-align:center" onload="window.print();window.close()">
+                <img src="${LOGO_URL}" style="width:40mm"><br><b>AGUA CRISTAL ZONA 6</b><hr>
+                <div style="text-align:left">
+                FECHA: ${o.date} ${o.time}<br>CLIENTE: ${o.name}<br>TEL: ${o.phone}<br>DIR: ${o.addr}<hr>
+                PRODUCTOS:<br>${o.qN > 0 ? `- Normal: ${o.qN}<br>` : ''}${o.qP > 0 ? `- Pequeño: ${o.qP}<br>` : ''}${o.qM > 0 ? `- 1/2 Garrafa: ${o.qM}<br>` : ''}
+                </div><hr><b style="font-size:1.2em">TOTAL: Q.${o.total.toFixed(2)}</b><br><br>¡GRACIAS POR SU COMPRA!
+            </body></html>`);
+            w.document.close();
+        };
+
+        window.delOrder = async (id) => { if (confirm("¿Seguro que desea eliminar este pedido?")) await deleteDoc(doc(db, "orders_ACZ6", id)); };
+        
+        window.onload = window.initFirebase;
+    </script>
+    <div id="app-container" class="flex-grow flex flex-col">
+        <div class="flex flex-col items-center justify-center flex-grow p-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-water-primary"></div>
+            <p class="mt-4 text-gray-600">Conectando con el sistema...</p>
+        </div>
+    </div>
+</body>
+</html>
